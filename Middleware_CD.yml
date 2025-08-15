@@ -1,0 +1,84 @@
+name: $(Build.BuildId)-$(SourceBranchName)-$(Date:yyyyMMdd)$(rev:.r)
+
+trigger: none
+
+parameters:
+  - name: desiredVersion
+    type: string
+    displayName: Version
+    default: "1.1.0"
+  - name: testMultipleServerEnabled
+    type: boolean
+    displayName: Enable run integration tests on multiple servers
+    default: true
+
+  - name: serversListDEV
+    displayName: Servers List DEV
+    type: string
+    values:
+    - "SRVDEVMIDAP01.local.bsc.com"
+    - "SRVDEVMD01.local.bsc.com"
+    - "SRVDEVMD02.local.bsc.com"
+    - "SRVDQMDA06.local.bsc.com"
+    - "SRVDQMDA07.local.bsc.com"
+    - "SRVDQMDA08.local.bsc.com"
+  - name: serversListQA
+    displayName: Servers List QA
+    type: string
+    values:
+    - "BSCSRVMDW01.local.bsc.com"
+    - "BSCSRVMDW02.local.bsc.com"
+    - "SRVQAMIDAP01.local.bsc.com"
+    - "SRVDQMDA01.local.bsc.com"
+    - "SRVDQMDA02.local.bsc.com"
+    - "SRVDQMDA04.local.bsc.com"
+    - "SRVQAMDP01.local.bsc.com"
+#
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: Pipeline_Templates/Pipeline_Templates
+      ref: main
+    - repository: scripts
+      type: git
+      name: Pipeline_Templates/powershell_scripts
+      ref: main
+    - repository: integration_tests
+      type: git
+      name: Pipeline_Templates/IntegrationTests
+      ref: main
+
+variables:
+  - name: application_name
+    value: 'BMSC.Middleware'
+  - group: vg-mdw-common
+  - group: vg-deploy-common
+
+lockBehavior: sequential
+extends:
+  template: flow/deploy/multi-stage.yml@templates
+  parameters:
+    commonDeployVariableGroup: vg-deploy-common
+    artifactName: drop
+    application_name: $(application_name)
+    testCollectionName: MDW
+    desiredVersion: ${{ parameters.desiredVersion }}
+    binariesArtifactName: $(Build.Repository.Name)
+    testOnMultipleServers: ${{ parameters.testMultipleServerEnabled }}
+    pool:
+      name: $(poolName)
+      demands: Agent.Name -equals $(agentName)
+    environments:
+      - name: Dev
+        dependsOn: []
+        server: ${{ parameters.serversListDEV }}
+        environment: DEV
+        deployVariableGroup: vg-common-dev
+        azureSubscription: $(azureSubscription)
+      - name: QA
+        dependsOn: DeployDev
+        server: ${{ parameters.serversListQA }}
+        environment: QA
+        deployVariableGroup: vg-common-qa
+        azureSubscription: $(azureSubscription)

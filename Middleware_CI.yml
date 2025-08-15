@@ -1,0 +1,63 @@
+name: $(Build.BuildId)-$(SourceBranchName)-$(Date:yyyyMMdd)$(rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - release/*
+  paths:
+    include:
+    - '*'
+
+variables:
+  - name: application_name
+    value: "BMSC.Middleware"
+  - group: vg-build-common
+  - group: SQ-Middleware
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: Middleware/pipeline_templates
+      ref: main
+
+stages:
+  - stage: Build
+    displayName: Build and Run Sonar Analysis
+    jobs:
+      - template: flow/build/dotnetframework.yml@templates
+        parameters:
+          pool:
+            name: $(poolName)
+            demands: Agent.Name -equals $(agentName)
+          application_name: $(application_name)
+          workingDirectory: $(Build.SourcesDirectory)
+          artifactName: drop
+          # Dotnet Build and Test
+          nuget_version: "4.4.1"
+          BuildConfiguration: $(BuildConfiguration)
+          BuildPlatform: $(BuildPlatform)
+          testSearchFolder: $(mediatorBinariesPath)
+          # SonarQube params
+          sonarqube_sc: $(sonarqube_sc)
+          sonarqube_projectKey: $(sonarqube_projectKey)
+          sonarqube_projectName: $(Build.Repository.Name)
+          sonarqube_inclusions: >
+            Adapters/Extreme.B2000CallAdapter/**, DAL/Extreme.B2000DataAccess/**, 
+            Adapters/Extreme.TokensCallAdapter/**, DAL/Extreme.TokensDataAccess/**, 
+            Tests/**
+          version: "$(Build.BuildNumber)"
+          # Versioning
+          gitversion_configFilePath: "gitversion.yml"
+          update_buildNumber: true
+          postBuild:
+            - task: ArchiveFiles@2
+              displayName: "Archive Mediator files"
+              inputs:
+                rootFolderOrFile: $(mediatorBinariesPath)
+                includeRootFolder: false
+                archiveType: "zip"
+                archiveFile: "$(Build.ArtifactStagingDirectory)/$(Build.Repository.Name).zip"
+                replaceExistingArchive: true

@@ -1,0 +1,195 @@
+# Node.js
+# Build a general Node.js project with npm.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
+
+name: $(Build.BuildId)-$(SourceBranchName)-$(Date:yyyyMMdd)$(rev:.r)
+
+trigger: none
+
+parameters:
+  - name: desiredVersion
+    type: string
+    displayName: Version
+    default: "1.1.0"
+  - name: testMultipleServerEnabled
+    type: boolean
+    displayName: Enable run integration tests on multiple servers
+    default: true
+ 
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: Pipeline_Templates/Pipeline_Templates
+      ref: main
+    - repository: InfraStructura
+      type: git
+      name: FabricaDigital/BSC.PortalCorporativo.Infra
+      ref: main
+    - repository: Ansible_Templates
+      type: git
+      name: Pipeline_Templates/Ansible_Templates
+      ref: main
+    - repository: scripts
+      type: git
+      name: Pipeline_Templates/powershell_scripts
+      ref: main
+
+  pipelines:
+    - pipeline: PortalCorporativoFrontEnd_CI
+      source: PortalCorporativoFrontEnd_CI
+      trigger:
+        branches:
+        - main
+        - Test
+        stages:
+          - Build
+  
+variables:
+  - group: vg-nodeJS-common
+  - group: vg-deploy-common
+  #- group: IaC_Fenix
+
+  - name: application_name
+    value: 'BSC.PortalCorporativo.FrontEnd'
+  - name: application_path
+    value: '/opt/pweb_frontend'
+  - name: private_registry
+    value: true
+  - name: sonarqube_enabled
+    value: true
+
+  - name: src_build
+    value: /ansible/artifacts
+  - name: tmp_build
+    value: '/tmp/tmp_build'
+  - name: build_file
+    value: 'BSC.PortalCorporativo.FrontEnd.zip'
+  - name: backup_path
+    value: '/tmp/backup'
+  - name: pm2_file
+    value: 'dist/main.js'
+  - name: pm2_name
+    value: 'pweb_client'
+  - name: nginx_reverse_path
+    value: '/'
+  - name: node_port
+    value: 3000
+  - name: nginx_port
+    value: 443
+  - name: graphql_port
+    value: 3050
+  - name: rol
+    value: web
+
+
+lockBehavior: sequential
+extends:
+  template: flow/deploy/multi-stage-node.yml@templates
+  parameters:
+    commonDeployVariableGroup: vg-deploy-common
+    artifactName: drop
+    application_name: $(application_name)
+    application_path: "/opt/pweb_backend"
+    terraDirectory: "$(Agent.BuildDirectory)/Ansible_Templates/Terraform/"
+    #terraEnable: ${{ eq(variables['terraEnable'], 'true') }}
+    terravarFile: "terraform.tfvar"
+    ansibleEnable: true
+    AnsibleDirectory: "$(Agent.BuildDirectory)/Ansible_Templates/ansible/"
+    inventoryFile: "inventario/inventario.yml"
+    playbookFile: "plantillas/linux/node_cd.yml"
+    desiredVersion: ${{ parameters.desiredVersion }}
+    binariesArtifactName: $(Build.Repository.Name)
+    testOnMultipleServers: ${{ parameters.testMultipleServerEnabled }}
+    pipelineId: "162"
+    ConfigFIle: "apollo/default.ts"
+
+
+    #pool:
+    #  name: $(poolName)
+    #  demands: Agent.Name -equals $(agentName)
+    environments:
+      - name: Dev
+        dependsOn: Sonar
+        server: SRVDEVPWEB01
+        serverApp: SRVDEVPWEB02
+        terraEnable: true
+        deployVariableGroup: vg-common-dev
+        vg_app: vg-PortalCorporativo-deploy-Dev
+        AgentPool: BSCPoolQA01
+        AgentName: BuildAgent001
+        infra_pool:
+          name: BSCPoolQA01
+          demands: Agent.ComputerName -equals LOVCDC008
+        #build_pool: 
+        #  vmImage: ubuntu-latest
+        build_pool:
+          name: $(build_pool)
+          demands: Agent.ComputerName -equals $(build_agent)
+        deploy_pool:
+          name: BSCPoolDev01
+          demands: Agent.ComputerName -equals srvqadyp04
+        #azureSubscription: $(azureSubscription)
+      - name: QA
+        dependsOn: DeployDev 
+        server: SRVQAPWEB01
+        serverApp: SRVQAPWEB02
+        terraEnable: true
+        deployVariableGroup: vg-common-qa
+        vg_app: vg-PortalCorporativo-deploy-QA
+        AgentPool: BSCPoolDev01
+        AgentName: DEVWinAGNT_001
+        infra_pool:
+          name: BSCPoolQA01
+          demands: Agent.ComputerName -equals LOVCDC008
+        #build_pool: 
+        #  vmImage: ubuntu-latest
+        build_pool:
+          name: $(build_pool)
+          demands: Agent.ComputerName -equals $(build_agent)
+        deploy_pool:
+          name: BSCPoolDev01
+          demands: Agent.ComputerName -equals srvqadyp04
+        #azureSubscription: $(azureSubscription)
+      - name: PROD
+        dependsOn: DeployQA
+        server: SRVQAPWEB01
+        serverApp: SRVQAPWEB02
+        terraEnable: false
+        deployVariableGroup: vg-common-prod
+        vg_app: vg-PortalCorporativo-deploy-PROD
+        AgentPool: BSCPoolQA01
+        AgentName: AgentWQA01
+        infra_pool:
+          name: BSCPoolQA01
+          demands: Agent.ComputerName -equals LOVCDC008
+        #build_pool: 
+        #  vmImage: ubuntu-latest
+        build_pool:
+          name: $(build_pool)
+          demands: Agent.ComputerName -equals $(build_agent)
+        deploy_pool:
+          name: BSCPoolDev01
+          demands: Agent.ComputerName -equals srvqadyp04
+
+        #azureSubscription: $(azureSubscription)
+    Applications:
+      - name: BSC.PortalCorporativo.BackEnd
+        dependsOn: []
+        server: $(ServerApi)
+        rol: Web
+        path: "path-client"
+        src_file: "/ansible/repositorio/portal-comercial-client/"
+        dest_file: "C:/inetpub/portalcomercial/webclient"
+        port_https: 8445
+        port_http: 8444
+        certFriendlyName: "AnsibleCertIISWeb"
+        website_name: "Pcomercial-client"
+        website_path: "C:/inetpub/portalcomercial/webclient"
+        backup_path: "C:/Backups/"
+        backup_zip: "{{ backup_path }}/{{ website_name }}_backup_{{ ansible_date_time.iso8601 | regex_replace('[:T-]', '') }}.zip"
+        cert_path: "/path/to/local/certificate.pfx"
+        cert_password: "your_certificate_password"
+        cert_store: "My"
+ 
