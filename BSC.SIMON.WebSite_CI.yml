@@ -1,0 +1,72 @@
+name: $(Build.BuildId)-$(SourceBranchName)-$(Date:yyyyMMdd)$(rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - release/*
+  paths:
+    include:
+    - 'MonitoreoCliente/*'
+
+variables:
+  - name: application_name
+    value: "BSC.SIMON.WebSite"
+  - group: vg-build-common
+  - group: SQ-BSC.SIMON.WebSite
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: Pipeline_Templates/Pipeline_Templates
+      ref: main
+
+stages:
+  - stage: Build
+    displayName: Build and Run Sonar Analysis
+    jobs:
+      - template: flow/build/dotnetcore.yml@templates
+        parameters:
+          pool:
+            #name: Hosted Windows 2019 with VS2019
+            name: $(poolName)
+            demands: Agent.Name -equals $(agentName)
+          application_name: $(application_name)
+          workingDirectory: $(Build.SourcesDirectory)
+          artifactName: drop
+          # Dotnet Build and Test
+          nuget_version: "4.4.1"
+          BuildConfiguration: $(BuildConfiguration)
+          BuildPlatform: $(BuildPlatform)
+          testSearchFolder: $(mediatorBinariesPath)
+          # SonarQube params
+          sonarqube_sc: $(sonarqube_sc)
+          sonarqube_projectKey: $(sonarqube_projectKey)
+          sonarqube_projectName: $(Build.Repository.Name)
+          sonarqube_enabled: "true"
+          sonarqube_inclusions: >
+            MonitoreoCliente/**,
+            MonitoreoCliente.sln
+          version: "$(Build.BuildNumber)"
+          version_sdk: "$(version_sdk)"
+          # Versioning
+          gitversion_configFilePath: "gitversion.yml"
+          update_buildNumber: true
+          cleanstage: false
+          #postBuild:
+          #  - task: ArchiveFiles@2
+          #    displayName: "Archive $(Build.Repository.Name) files"
+          #    enabled: false
+          #    inputs:
+          #      rootFolderOrFile: $(Build.StagingDirectory)
+          #      includeRootFolder: false
+          #      archiveType: "zip"
+          #      archiveFile: "$(Build.ArtifactStagingDirectory)/$(Build.Repository.Name).zip"
+          #      replaceExistingArchive: true
+          #  - task: CopyFiles@2
+          #    inputs:
+          #      SourceFolder: '$(Build.SourcesDirectory)'
+          #      Contents: '**'
+          #      TargetFolder: 'D:\temp\FacturacionElectronica'
